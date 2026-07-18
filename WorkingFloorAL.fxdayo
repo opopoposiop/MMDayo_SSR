@@ -49,30 +49,66 @@ using namespace Dayo;
 using namespace YRZ;
 
 // ============================================================
-// Constant Buffer
+// このファイルを調整する方へ（非エンジニア向け）
 // ============================================================
-// MikuMikuDayo provides Time and Resolution from ViewCB in resources_pp.hlsli.
-// Controller morph values are declared by the controller list above:
-//   C_SizeX        : FloorSizeX morph, 1.0 = 10 MMD units
-//   C_SizeZ        : FloorSizeZ morph, 1.0 = 10 MMD units
-//   C_Reflectivity : Reflectivity morph, 0.0 = none, 0.8 = MMD 80%, 1.0 = 100% reflection
-//   C_off          : effect bypass
+// このエフェクトは「床の位置を求める → 複数の方法で映り込みを探す
+// → 信頼できる結果を選ぶ → 元の画面へ合成する」という順序で動作します。
+//
+// 【ユーザーが変更してよい箇所】
+// 通常はこのソースを編集せず、WorkingFloorAL.pmx の次のモーフを操作してください。
+//   FloorSizeX   : 床の横幅。1.0 で 10 MMD 座標単位
+//   FloorSizeZ   : 床の奥行き。1.0 で 10 MMD 座標単位
+//   Reflectivity : 反射率。0.0 で反射なし、0.8 で 80%、1.0 で 100%
+//   off          : エフェクトの無効化。0.0 で有効、1.0 で無効
+//
+// 見た目をさらに調整したい場合は、直後の「見た目の調整値」のうち、
+// [調整可] と書かれた定数だけを少しずつ変更してください。
+// 変更前の値を控え、1 項目ずつ変更すると元へ戻しやすくなります。
+//
+// 【変更不可の箇所】
+// ファイル先頭の [YRZFX]、controllers / textures / passes の名前、
+// #include、シェーダー関数名、SV_ から始まる入出力、行列・深度・UV の計算、
+// #ifdef YRZ_PASS_... の条件は変更しないでください。
+// これらは MikuMikuDayo と各描画工程を接続するための約束事です。
+// 名前や順序が一致しないと、画面が映らない、反射が消える、または
+// エフェクトを読み込めなくなる可能性があります。
+//
+// 【Codex 用覚書】
+// ・実装コードでは HOW（どのように処理するか）を明確にする。
+// ・テストコードでは WHAT（何を確認するか）を明確にする。
+// ・コミットログでは WHY（なぜ変更するか）を明確にする。
+// ・コードコメントでは WHY NOT（なぜ単純な別案を採らないか）も残す。
+// ・修正時は既存の定数名、パス名、リソース名、モーフとの対応を維持する。
+// ・見た目の修正は一度に一要素とし、暗い物体、白い背景、床の端、
+//   カメラの近距離／遠距離、透過材質、off モーフで回帰確認する。
 
 // ============================================================
-// Texture / Sampler
+// MikuMikuDayo から受け取る値
 // ============================================================
-// ScreenTexture is the current postprocess input texture.
-// samp is declared in the sampler section above.
+// Time と Resolution は resources_pp.hlsli の ViewCB から提供されます。
+// C_ で始まる値は、先頭の controllers と PMX モーフを経由して届きます。
+// ScreenTexture は現在の画面、NormalDepth は法線・深度情報です。
+// samp は先頭の samplers で宣言された、画像を滑らかに読むための設定です。
 
+// ============================================================
+// 見た目の調整値
+// ============================================================
+// [調整可] 床サイズのモーフ値 1.0 を何 MMD 座標単位として扱うか。
 static const float BaseFloorUnitMMD = 10.0;
+// [予約値・変更不要] グリッド線用の値。現在の処理からは参照されないため、
+// 値を変えても表示は変わらない。
 static const float GridThickness = 0.018;
 static const float GridOpacity = 0.0;
+// [調整可] 床の端を自然にぼかす幅。大きいほど境界が柔らかくなる。
 static const float FloorFeatherMMD = 0.75;
+// [予約値・変更不要] 距離に関する基準値。現在は反射の見た目に影響しない。
 static const float ReflectionNearMMD = 2.0;
 static const float ReflectionFarMMD = 45.0;
+// [調整可] 画面内反射の強さ、代替反射の強さ、折り返し反射の混合率。
 static const float SourceFloorReflectionScale = 0.22;
 static const float FallbackReflectionScale = 1.00;
 static const float FoldedReflectionWeight = 0.38;
+// [調整可] 反射全体の明るさ、検出感度、床の明るさ、色味、コントラスト。
 static const float ReflectionGain = 1.08;
 static const float ReflectionAvailabilityGain = 8.0;
 static const float ReflectionFloorBrightness = 1.00;
@@ -80,8 +116,11 @@ static const float ReflectionFloorLift = 0.000;
 static const float3 ReflectionColorBalance = float3(0.92, 0.98, 1.14);
 static const float ReflectionContrast = 1.07;
 
+// [調整可] 最終合成で残す床の細部。上げすぎると輪郭がざらつく。
 static const float CompositeFloorDetailStrength = 0.62;
 static const float CompositeFloorDetailClamp = 0.075;
+// [上級者向け・原則変更不要] 以下は反射の判定・探索・深度許容値。
+// 値は相互に依存するため、見た目の好みだけで個別に変えない。
 static const float MirrorSceneAlphaGain = 3.20;
 static const float MirrorSceneColorScale = 0.97;
 static const float ReflectionAlphaSampleScale = 0.58;
@@ -101,9 +140,14 @@ static const float SSRStepMMD = 0.36;
 static const float SSRThicknessBaseMMD = 0.85;
 static const float SSRThicknessScale = 0.010;
 static const int SSRSteps = 96;
+// [変更不可] 現在の床面はワールド座標 Y=0。変更すると PMX の床位置、
+// 鏡像化、交差判定、投影の前提が揃わなくなる。
 static const float FloorY = 0.0;
 
 
+// HOW: 投影行列とビュー行列を逆変換し、画面上の点をワールド座標へ戻せる
+// 行列を作る。Perspective の分岐は透視投影と平行投影の両方に対応する。
+// WHY NOT: 一方の投影だけを前提にすると、カメラ設定を変えた際に床がずれる。
 float4x4 GetInvViewProjectionMatrixLocal()
 {
     float4x4 invProjection = Perspective ? InverseProjectionMatrix(ProjectionMatrix) : InverseOrthoProjectionMatrix(ProjectionMatrix);
@@ -126,11 +170,15 @@ VSO VS(float4 pos : POSITION, float2 uv : TEXCOORD)
 
 float SafePositive(float value, float fallbackValue)
 {
+    // HOW: 未設定または極端に小さいモーフ値を安全な既定値へ置き換える。
+    // WHY NOT: 0 のまま床サイズ計算へ渡すと、床が線状になり判定が不安定になる。
     return (value > 0.0001) ? value : fallbackValue;
 }
 
 float LineMask(float coord, float thickness)
 {
+    // HOW: 座標の小数部分から線までの距離を測り、画面解像度に応じて
+    // 境界を滑らかにする。将来グリッド表示を戻す場合に使用する補助関数。
     float distToLine = abs(frac(coord + 0.5) - 0.5);
     float aa = max(fwidth(coord), 0.0001);
     return 1.0 - smoothstep(thickness, thickness + aa, distToLine);
@@ -138,6 +186,8 @@ float LineMask(float coord, float thickness)
 
 float3 CameraRay(float2 uv)
 {
+    // HOW: 各ピクセルからシーンへ伸びる視線方向を求める。
+    // WHY NOT: 常に CameraForward を使うと、透視投影で画面端ほど位置がずれる。
     if (Perspective) {
         float3 p = Transform(float3((uv * 2.0 - 1.0) * float2(1.0, -1.0), 0.0), GetInvViewProjectionMatrixLocal());
         return normalize(p - CameraPosition);
@@ -147,6 +197,8 @@ float3 CameraRay(float2 uv)
 
 bool IntersectFloor(float2 uv, out float3 floorPos, out float floorViewZ)
 {
+    // HOW: カメラの視線と Y=FloorY の水平面が交わる位置を計算する。
+    // 平行、カメラの背後、深度が無効な場合は床なしとして false を返す。
     float3 ray = CameraRay(uv);
     float denom = ray.y;
     if (abs(denom) < 1e-5) {
@@ -169,6 +221,8 @@ bool IntersectFloor(float2 uv, out float3 floorPos, out float floorViewZ)
 
 float SourceFloorMask(float2 sourceUV)
 {
+    // HOW: 指定した画面位置が、床面または背景として扱えるか深度で判定する。
+    // WHY NOT: 色だけで床を判定すると、床と同色の人物や背景を誤認しやすい。
     float3 sourceFloorPos;
     float sourceFloorViewZ;
     if (!IntersectFloor(sourceUV, sourceFloorPos, sourceFloorViewZ)) {
@@ -182,6 +236,8 @@ float SourceFloorMask(float2 sourceUV)
 
 float4 SampleScreenSoft(float2 sampleUV, float2 texelSize)
 {
+    // HOW: 中央と上下を混ぜ、代替反射のギザつきやちらつきを軽減する。
+    // WHY NOT: 大きなぼかしは人物や小物の輪郭まで失わせるため、5 点未満に留める。
     float2 dy = float2(0.0, texelSize.y * 1.25);
     float4 color = ScreenTexture.SampleLevel(samp, sampleUV, 0) * 0.74;
     color += ScreenTexture.SampleLevel(samp, sampleUV + dy, 0) * 0.13;
@@ -191,6 +247,8 @@ float4 SampleScreenSoft(float2 sampleUV, float2 texelSize)
 
 float4 SampleMirrorSceneSoft(float2 sampleUV, float2 texelSize)
 {
+    // HOW: 鏡像専用テクスチャを縦方向の 5 点で合成する。
+    // WHY NOT: 横方向までぼかすと、床上の接地点が横へにじみやすい。
     float2 dy1 = float2(0.0, texelSize.y * 1.25);
     float2 dy2 = float2(0.0, texelSize.y * 2.50);
     float4 color = MirrorScene.SampleLevel(samp, sampleUV, 0) * 0.68;
@@ -202,6 +260,8 @@ float4 SampleMirrorSceneSoft(float2 sampleUV, float2 texelSize)
 }
 float3 SampleNonFloorNeighborhood(float2 centerUV, float2 texelSize)
 {
+    // HOW: SSR の命中点周辺から床ではない色を優先して平均し、
+    // 深度境界に混ざった床色を減らす。
     float2 offsets[5] = {
         float2(0.0, 0.0),
         float2(1.5, 0.0),
@@ -230,6 +290,9 @@ float3 SampleNonFloorNeighborhood(float2 centerUV, float2 texelSize)
 
 float4 SampleFoldedScreenReflection(float2 uv, float mirrorAxisY, float2 texelSize, out float hitMask)
 {
+    // HOW: 床の基準線を挟んで画面を上下反転し、簡易的な反射候補を作る。
+    // WHY NOT: この方法だけでは画面外の物体や奥行きを正しく扱えないため、
+    // SSR と投影反射が取れない場合の補助として使用する。
     float2 mirrorUV = float2(uv.x, 2.0 * mirrorAxisY - uv.y);
     if (any(mirrorUV < 0.0) || any(mirrorUV > 1.0)) {
         hitMask = 0.0;
@@ -262,6 +325,9 @@ float4 SampleFoldedScreenReflection(float2 uv, float mirrorAxisY, float2 texelSi
 }
 float TryProjectedRoomSample(float3 floorPos, float3 reflectionRay, float targetHeight, float2 texelSize, inout float3 accum, inout float weightSum, float weight)
 {
+    // HOW: 反射方向が指定した高さへ到達する位置を画面へ投影し、
+    // 部屋や背景の色候補として加重平均へ追加する。
+    // WHY NOT: 画面外や床面をそのまま採用すると、不自然な帯や二重の床が映る。
     if (reflectionRay.y <= 0.0001) {
         return 0.0;
     }
@@ -286,6 +352,8 @@ float TryProjectedRoomSample(float3 floorPos, float3 reflectionRay, float target
 
 float4 SampleProjectedRoomReflection(float3 floorPos, float3 cameraRay, float2 texelSize, out float hitMask)
 {
+    // HOW: 低・中・高の 3 高度から色を集め、壁や部屋らしい反射を補う。
+    // WHY NOT: 1 高度だけに固定すると、カメラ角度によって候補が急に消える。
     hitMask = 0.0;
     float3 reflectionRay = reflect(cameraRay, float3(0.0, 1.0, 0.0));
 
@@ -305,6 +373,9 @@ float4 SampleProjectedRoomReflection(float3 floorPos, float3 cameraRay, float2 t
 
 float4 SamplePlanarSSRReflection(float3 floorPos, float3 cameraRay, float2 texelSize, out float hitMask)
 {
+    // HOW: 床で反射した光線を少しずつ進め、画面の深度と一致する物体を探す。
+    // 候補のうち、深度・非床・距離の条件が最も良い点を反射色にする。
+    // WHY NOT: 最初の候補だけで打ち切ると床自身や薄い物体を誤検出しやすい。
     hitMask = 0.0;
 
     float3 reflectionRay = reflect(cameraRay, float3(0.0, 1.0, 0.0));
@@ -354,8 +425,11 @@ float4 SamplePlanarSSRReflection(float3 floorPos, float3 cameraRay, float2 texel
     return float4(0.0, 0.0, 0.0, 0.0);
 }
 // ============================================================
-// Mirrored scene raster pass
+// 鏡像シーン描画パス
 // ============================================================
+// HOW: モデルを床面の下へ反転して専用テクスチャ MirrorScene に描く。
+// 画面内探索より実体の形を保ちやすく、暗い物体でも反射を取得できる。
+// [変更不可] YRZ_PASS_MirrorScene、MirrorVS、MirrorPS、各 SV_ セマンティクス。
 #ifdef YRZ_PASS_MirrorScene
 
 struct MirrorVSO {
@@ -369,11 +443,12 @@ MirrorVSO MirrorVS(float4 pos : POSITION, float3 normal : NORMAL, float3 tangent
 {
     MirrorVSO o = (MirrorVSO)0;
 
-    // WorkingFloorAL's IsFace(): render only geometry on the same side of
-    // the mirror plane as the camera. Without this, reflected floor backsides
-    // and room shells can cover the whole mirror target at specific distances.
+    // HOW: カメラと同じ床側にある面だけを残すための値を作る。
+    // WHY NOT: 全面を反転描画すると、床の裏面や部屋の外殻が特定距離で
+    // MirrorScene 全体を覆い、反射対象が見えなくなる。
     o.mirrorSide = min(pos.y - FloorY, CameraPosition.y - FloorY);
 
+    // HOW: 床面を境に Y 座標と法線を反転して鏡像を作る。
     float4 mirroredPos = pos;
     mirroredPos.y = 2.0 * FloorY - mirroredPos.y;
     o.position = mul(mirroredPos, ViewProjectionMatrix);
@@ -384,8 +459,11 @@ MirrorVSO MirrorVS(float4 pos : POSITION, float3 normal : NORMAL, float3 tangent
 
 float4 MirrorPS(MirrorVSO input, uint iFace : SV_PrimitiveID, bool vface : SV_IsFrontFace) : SV_TARGET
 {
+    // HOW: mirrorSide が負の面を描画対象から外す。
     clip(input.mirrorSide);
 
+    // HOW: MMD 材質とテクスチャの乗算色・加算色を反映し、
+    // 元モデルに近い色と透明度で鏡像を描く。
     MMDMaterial mat = MMDMaterials[ModelIndex][Faces[ModelIndex][iFace]];
     float4 tex = 1.0;
     if (mat.tex >= 0) {
@@ -397,6 +475,7 @@ float4 MirrorPS(MirrorVSO input, uint iFace : SV_PrimitiveID, bool vface : SV_Is
 
     float4 albedo = float4(mat.diffuse.rgb, mat.diffuse.a) * tex;
     if (albedo.a <= 0.001) {
+        // WHY NOT: ほぼ透明な画素を残すと、透明部分まで反射を遮ってしまう。
         discard;
     }
 
@@ -408,8 +487,11 @@ float4 MirrorPS(MirrorVSO input, uint iFace : SV_PrimitiveID, bool vface : SV_Is
 
 #endif
 // ============================================================
-// Pixel Shader
+// 反射画像の作成パス
 // ============================================================
+// HOW: 各ピクセルが床かを判定し、SSR・部屋投影・画面折り返し・鏡像描画を
+// 信頼度に応じて合成して ReflectBuf に保存する。
+// [変更不可] YRZ_PASS_DrawReflect と PS の入出力。
 #ifdef YRZ_PASS_DrawReflect
 
 float4 PS(VSO input) : SV_TARGET
@@ -419,6 +501,7 @@ float4 PS(VSO input) : SV_TARGET
     float4 sceneColor = ScreenTexture.Sample(samp, uv);
 
     float off = saturate(C_off);
+    // HOW: PMX モーフ値を MMD 座標の床サイズへ換算する。
     float sizeX = SafePositive(C_SizeX, 1.0) * BaseFloorUnitMMD;
     float sizeZ = SafePositive(C_SizeZ, 1.0) * BaseFloorUnitMMD;
     float2 renderSize = max(float2((float)Resolution.x, (float)Resolution.y), float2(1.0, 1.0));
@@ -439,11 +522,14 @@ float4 PS(VSO input) : SV_TARGET
     float insideZ = 1.0 - smoothstep(halfZ, halfZ + FloorFeatherMMD, abs(localZ));
 
     float sceneZ = NormalDepth[pix].w;
+    // HOW: 床より手前に物体がある画素を除外し、人物の上へ反射を重ねない。
+    // WHY NOT: 固定の許容差だけでは、遠景ほど深度誤差の影響が大きくなる。
     float depthTolerance = max(FloorDepthToleranceMin, abs(floorViewZ) * FloorDepthToleranceScale);
     float notOccluded = (sceneZ == 0.0 || sceneZ >= floorViewZ - depthTolerance) ? 1.0 : 0.0;
     float floorMask = (floorHit ? 1.0 : 0.0) * insideX * insideZ * notOccluded;
 
     float ssrMask;
+    // HOW: 精度の高い順に使えるよう、まず各方式の色と信頼度を個別に得る。
     float4 ssrReflected = SamplePlanarSSRReflection(floorPos, cameraRay, texelSize, ssrMask);
     float roomMask;
     float4 roomReflected = SampleProjectedRoomReflection(floorPos, cameraRay, texelSize, roomMask);
@@ -454,6 +540,8 @@ float4 PS(VSO input) : SV_TARGET
     float4 foldedReflected = SampleFoldedScreenReflection(uv, mirrorAxisY, texelSize, foldedMask);
 
     float roomBlend = saturate(roomMask * (1.0 - ssrMask));
+    // HOW: SSR を最優先し、取れない場所を部屋投影と折り返し画像で補う。
+    // WHY NOT: 単純平均では、正確な SSR が代替画像に薄められて二重像になる。
     float3 roomOrFolded = lerp(lerp(ScreenTexture.SampleLevel(samp, uv, 0).rgb, foldedReflected.rgb, FoldedReflectionWeight), roomReflected.rgb, roomBlend);
     float ssrBlend = saturate(ssrMask);
     float reflectionConfidence = saturate(max(ssrMask, max(roomMask, foldedMask * FoldedReflectionWeight * (1.0 - roomBlend))));
@@ -461,7 +549,8 @@ float4 PS(VSO input) : SV_TARGET
     float3 reflectedColor = saturate(lerp(roomOrFolded, ssrReflected.rgb, ssrBlend) * ReflectionGain);
     reflectedColor = lerp(sceneColor.rgb, reflectedColor, sampleAvailable);
 
-    // The rasterized mirror is authoritative and remains valid for dark objects.
+    // HOW: 専用パスで描いた鏡像は暗い物体でも有効なので、最も確かな結果として扱う。
+    // WHY NOT: 明るさだけで有無を判定すると、黒い服や暗い部屋の反射が消える。
     float4 mirrorScene = SampleMirrorSceneSoft(uv, texelSize);
     float mirrorAvailable = saturate(mirrorScene.a * MirrorSceneAlphaGain);
     float mirrorDominance = smoothstep(0.04, 0.22, mirrorAvailable);
@@ -471,8 +560,9 @@ float4 PS(VSO input) : SV_TARGET
     reflectedColor = saturate((reflectedColor - 0.5) * ReflectionContrast + 0.5);
     reflectedColor = saturate(reflectedColor * ReflectionColorBalance);
 
-    // Reject only a white screen-space fallback. Do not replace it with an opaque
-    // floor color, and do not apply this test to the rasterized mirror RT.
+    // HOW: 白く無彩色に近い代替反射だけを弱め、白飛びした床を防ぐ。
+    // WHY NOT: 鏡像専用テクスチャにも同じ判定を適用すると、本当に白い衣装や
+    // 小物まで消える。代わりに不透明な床色を置くと自然な透過合成も失われる。
     float fallbackLum = dot(reflectedColor, float3(0.2126, 0.7152, 0.0722));
     float fallbackMax = max(reflectedColor.r, max(reflectedColor.g, reflectedColor.b));
     float fallbackMin = min(reflectedColor.r, min(reflectedColor.g, reflectedColor.b));
@@ -485,6 +575,8 @@ float4 PS(VSO input) : SV_TARGET
 
     float fallbackAlpha = sampleAvailable * ReflectionAlphaSampleScale
         * (1.0 - mirrorDominance) * (1.0 - whiteFallback);
+    // HOW: 床範囲、off モーフ、反射内容の有無をアルファへまとめる。
+    // RGB は反射色、A は最終合成で使う反射の有効度。
     float contentAlpha = max(mirrorDominance, fallbackAlpha);
     float reflectAlpha = floorMask * (1.0 - off) * saturate(contentAlpha);
     return float4(reflectedColor, reflectAlpha);
@@ -492,6 +584,11 @@ float4 PS(VSO input) : SV_TARGET
 
 #endif
 
+// ============================================================
+// 最終合成パス
+// ============================================================
+// HOW: 元の画面と ReflectBuf を Reflectivity モーフに従って混ぜる。
+// [変更不可] YRZ_PASS_Composite と PS の入出力。
 #ifdef YRZ_PASS_Composite
 
 float4 PS(VSO input) : SV_TARGET
@@ -502,9 +599,12 @@ float4 PS(VSO input) : SV_TARGET
 
     float reflectivity = saturate(C_Reflectivity);
     float blend = saturate(reflectivity * reflected.a);
-    // Keep the morph-to-reflectivity mapping linear, as in WorkingFloorAL.fx.
+    // HOW: モーフ 0.5 を反射率 50% として、直線的に対応させる。
+    // WHY NOT: 二乗などの補正を加えると、PMX 側で指定した割合と見た目が一致しない。
     float3 finalColor = lerp(sceneColor.rgb, reflected.rgb, blend);
 
+    // HOW: 元画面の近傍との差から細部だけを取り出し、反射面へ少量戻す。
+    // WHY NOT: 反射色だけで全面を置き換えると、床本来の細かな陰影が消える。
     float2 texelSize = 1.0 / max(float2((float)Resolution.x, (float)Resolution.y), float2(1.0, 1.0));
     float3 sceneBlur = ScreenTexture.SampleLevel(samp, input.uv + float2(texelSize.x, 0.0), 0).rgb * 0.25;
     sceneBlur += ScreenTexture.SampleLevel(samp, input.uv - float2(texelSize.x, 0.0), 0).rgb * 0.25;
@@ -518,10 +618,6 @@ float4 PS(VSO input) : SV_TARGET
 }
 
 #endif
-
-
-
-
 
 
 
