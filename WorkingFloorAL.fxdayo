@@ -4,8 +4,8 @@
         "cereal_class_version": 0,
         "category": "postprocess",
         "controllers": [
-            { "name":"C_SizeX",       "controllerName":"(self)", "item":"FloorSizeX",   "type":"float", "slider":{"min":0.1, "max":10.0, "def":1.0} },
-            { "name":"C_SizeZ",       "controllerName":"(self)", "item":"FloorSizeZ",   "type":"float", "slider":{"min":0.1, "max":10.0, "def":1.0} },
+            { "name":"C_SizeX",       "controllerName":"(self)", "item":"FloorSizeX",   "type":"float", "slider":{"min":0.0, "max":10.0, "def":0.0} },
+            { "name":"C_SizeZ",       "controllerName":"(self)", "item":"FloorSizeZ",   "type":"float", "slider":{"min":0.0, "max":10.0, "def":0.0} },
             { "name":"C_Reflectivity","controllerName":"(self)", "item":"Reflectivity", "type":"float", "slider":{"min":0.0, "max":1.0, "def":1.0} },
             { "name":"C_off",         "controllerName":"(self)", "item":"off",          "type":"float" }
         ],
@@ -56,8 +56,8 @@ using namespace YRZ;
 //
 // 【ユーザーが変更してよい箇所】
 // 通常はこのソースを編集せず、WorkingFloorAL.pmx の次のモーフを操作してください。
-//   FloorSizeX   : 床の横幅。1.0 で 10 MMD 座標単位
-//   FloorSizeZ   : 床の奥行き。1.0 で 10 MMD 座標単位
+//   FloorSizeX   : 床の横幅。1.0 で 100 MMD 座標単位
+//   FloorSizeZ   : 床の奥行き。1.0 で 100 MMD 座標単位
 //   Reflectivity : 反射率。0.0 で反射なし、0.8 で 80%、1.0 で 100%
 //   off          : エフェクトの無効化。0.0 で有効、1.0 で無効
 //
@@ -94,7 +94,7 @@ using namespace YRZ;
 // 見た目の調整値
 // ============================================================
 // [調整可] 床サイズのモーフ値 1.0 を何 MMD 座標単位として扱うか。
-static const float BaseFloorUnitMMD = 10.0;
+static const float BaseFloorUnitMMD = 100.0;
 // [予約値・変更不要] グリッド線用の値。現在の処理からは参照されないため、
 // 値を変えても表示は変わらない。
 static const float GridThickness = 0.018;
@@ -166,13 +166,6 @@ VSO VS(float4 pos : POSITION, float2 uv : TEXCOORD)
     o.position = pos;
     o.uv = uv;
     return o;
-}
-
-float SafePositive(float value, float fallbackValue)
-{
-    // HOW: 未設定または極端に小さいモーフ値を安全な既定値へ置き換える。
-    // WHY NOT: 0 のまま床サイズ計算へ渡すと、床が線状になり判定が不安定になる。
-    return (value > 0.0001) ? value : fallbackValue;
 }
 
 float LineMask(float coord, float thickness)
@@ -502,8 +495,8 @@ float4 PS(VSO input) : SV_TARGET
 
     float off = saturate(C_off);
     // HOW: PMX モーフ値を MMD 座標の床サイズへ換算する。
-    float sizeX = SafePositive(C_SizeX, 1.0) * BaseFloorUnitMMD;
-    float sizeZ = SafePositive(C_SizeZ, 1.0) * BaseFloorUnitMMD;
+    float sizeX = max(C_SizeX, 0.0) * BaseFloorUnitMMD;
+    float sizeZ = max(C_SizeZ, 0.0) * BaseFloorUnitMMD;
     float2 renderSize = max(float2((float)Resolution.x, (float)Resolution.y), float2(1.0, 1.0));
     float2 texelSize = 1.0 / renderSize;
 
@@ -520,13 +513,14 @@ float4 PS(VSO input) : SV_TARGET
     float halfZ = sizeZ * 0.5;
     float insideX = 1.0 - smoothstep(halfX, halfX + FloorFeatherMMD, abs(localX));
     float insideZ = 1.0 - smoothstep(halfZ, halfZ + FloorFeatherMMD, abs(localZ));
+    float sizeEnabled = step(0.0001, min(sizeX, sizeZ));
 
     float sceneZ = NormalDepth[pix].w;
     // HOW: 床より手前に物体がある画素を除外し、人物の上へ反射を重ねない。
     // WHY NOT: 固定の許容差だけでは、遠景ほど深度誤差の影響が大きくなる。
     float depthTolerance = max(FloorDepthToleranceMin, abs(floorViewZ) * FloorDepthToleranceScale);
     float notOccluded = (sceneZ == 0.0 || sceneZ >= floorViewZ - depthTolerance) ? 1.0 : 0.0;
-    float floorMask = (floorHit ? 1.0 : 0.0) * insideX * insideZ * notOccluded;
+    float floorMask = (floorHit ? 1.0 : 0.0) * insideX * insideZ * notOccluded * sizeEnabled;
 
     float ssrMask;
     // HOW: 精度の高い順に使えるよう、まず各方式の色と信頼度を個別に得る。
@@ -618,8 +612,6 @@ float4 PS(VSO input) : SV_TARGET
 }
 
 #endif
-
-
 
 
 
