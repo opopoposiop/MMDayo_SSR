@@ -1,4 +1,4 @@
-# MMDayo_SSR for MikuMikuDayo
+# MMDayo_SSR / Screen Space Reflection for MikuMikuDayo
 
 [MikuMikuDayo](https://github.com/pennennennennennenem/MikuMikuDayo)用の反射床エフェクトです。  
 `MMDayo_SSR.pmx` のモーフから床の大きさ、反射合成係数、エフェクトの有効・無効を操作できます。さらに「センター」ボーンのY座標から反射面の高さを調整できます。
