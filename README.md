@@ -6,7 +6,7 @@
 > 本プロジェクトはMikuMikuDayoの公式配布物ではありません。
 
 
-本プロジェクトは、針金p 氏の [WorkingFloor](https://seiga.nicovideo.jp/seiga/im1575145) ぽい反射床表現を、MikuMikuDayoとYRZFXポストプロセス環境で実装しています。
+本プロジェクトは、針金p 氏の [WorkingFloor](https://seiga.nicovideo.jp/seiga/im1575145) ぽい反射床表現を、MikuMikuDayoとYRZFXポストプロセス環境で実装しています。公式版・移植版ではありません。
 
 本プロジェクトは参照元作品の転載・再配布を目的とするものではありません。参照元作品に関する権利およびクレジットは、各権利者・作者に帰属します。
 
