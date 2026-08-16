@@ -6,7 +6,7 @@
 > 本プロジェクトはMikuMikuDayoの公式配布物ではありません。
 
 
-本プロジェクトは、針金p 氏の [im1575145](https://seiga.nicovideo.jp/seiga/im1575145) のWorkingFloorぽい反射床表現を、MikuMikuDayoとYRZFXポストプロセス環境で実装しています。
+本プロジェクトは、針金p 氏の [WorkingFloor](https://seiga.nicovideo.jp/seiga/im1575145) ぽい反射床表現を、MikuMikuDayoとYRZFXポストプロセス環境で実装しています。
 
 本プロジェクトは参照元作品の転載・再配布を目的とするものではありません。参照元作品に関する権利およびクレジットは、各権利者・作者に帰属します。
 
@@ -152,6 +152,7 @@ PMXコントローラーには「全ての親」と「センター」ボーン�
 ## 謝辞
 
 - [MikuMikuDayo](https://github.com/pennennennennennenem/MikuMikuDayo) — 本エフェクトの実行環境およびYRZFXの仕組みを利用しています。
+- [WorkingFloor](https://seiga.nicovideo.jp/seiga/im1575145)  — 本エフェクトの反射床表現
 
 ## 問い合わせ
 
