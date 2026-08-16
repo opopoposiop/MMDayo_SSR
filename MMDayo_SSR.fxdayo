@@ -56,7 +56,7 @@ using namespace YRZ;
 // → 信頼できる結果を選ぶ → 元の画面へ合成する」という順序で動作します。
 //
 // 【ユーザーが変更してよい箇所】
-// 通常はこのソースを編集せず、WorkingFloorAL.pmx の次のモーフとボーンを操作してください。
+// 通常はこのソースを編集せず、MMDayo_SSR.pmx の次のモーフとボーンを操作してください。
 //   FloorSizeX   : 床の横幅。1.0 で 100 MMD 座標単位
 //   FloorSizeZ   : 床の奥行き。1.0 で 100 MMD 座標単位
 //   Reflectivity : 反射率。0.0 で反射なし、0.8 で 80%、1.0 で 100%
@@ -142,7 +142,7 @@ static const float SSRStepMMD = 0.36;
 static const float SSRThicknessBaseMMD = 0.85;
 static const float SSRThicknessScale = 0.010;
 static const int SSRSteps = 96;
-// [変更不可] 反射面の基準Y座標。実際の反射面はWorkingFloorAL.pmxの
+// [変更不可] 反射面の基準Y座標。実際の反射面はMMDayo_SSR.pmxの
 // 「センター」ボーンのY座標を加えて決める。
 // WHY NOT: 床の高さを各処理へ個別に埋め込むと、交差判定と鏡像化の面がずれる。
 static const float FloorYBase = 0.0;

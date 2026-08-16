@@ -1,7 +1,7 @@
-# WorkingFloorAL for MikuMikuDayo
+# MMDayo_SSR for MikuMikuDayo
 
 [MikuMikuDayo](https://github.com/pennennennennennenem/MikuMikuDayo)用の反射床エフェクトです。  
-`WorkingFloorAL.pmx` のモーフから床の大きさ、反射合成係数、エフェクトの有効・無効を操作できます。さらに「センター」ボーンのY座標から反射面の高さを調整できます。
+`MMDayo_SSR.pmx` のモーフから床の大きさ、反射合成係数、エフェクトの有効・無効を操作できます。さらに「センター」ボーンのY座標から反射面の高さを調整できます。
 
 > 本プロジェクトはMikuMikuDayoの公式配布物ではありません。
 
@@ -14,8 +14,8 @@
 
 | ファイル | 内容 |
 | --- | --- |
-| `WorkingFloorAL.fxdayo` | HLSLで記述されたYRZFXポストプロセスエフェクト |
-| `WorkingFloorAL.pmx` | エフェクト操作用のPMXコントローラー |
+| `MMDayo_SSR.fxdayo` | HLSLで記述されたYRZFXポストプロセスエフェクト |
+| `MMDayo_SSR.pmx` | エフェクト操作用のPMXコントローラー |
 
 ## 対応環境
 
@@ -33,9 +33,9 @@
 
 ## 導入方法
 
-1. `WorkingFloorAL.fxdayo` と `WorkingFloorAL.pmx` を同じフォルダーに置きます。
-2. MikuMikuDayoで `WorkingFloorAL.pmx` を読み込みます。
-3. 同名の `WorkingFloorAL.fxdayo` がポストプロセスエフェクトとして開始されます。
+1. `MMDayo_SSR.fxdayo` と `MMDayo_SSR.pmx` を同じフォルダーに置きます。
+2. MikuMikuDayoで `MMDayo_SSR.pmx` を読み込みます。
+3. 同名の `MMDayo_SSR.fxdayo` がポストプロセスエフェクトとして開始されます。
 
 ## コントローラー
 
@@ -88,12 +88,12 @@ PMXコントローラーには「全ての親」と「センター」ボーン�
 
 - 画面外または別の物体に遮蔽された対象は、完全には反射できません。
 - 透過材質、深度情報、カメラ角度によっては反射位置や反射量が不自然になる場合があります。
-- 床面は水平面に限定されます。高さは `WorkingFloorAL.pmx` の「センター」ボーンで変更できますが、傾斜や曲面には対応していません。
+- 床面は水平面に限定されます。高さは `MMDayo_SSR.pmx` の「センター」ボーンで変更できますが、傾斜や曲面には対応していません。
 - 物理ベースの鏡面反射ではなく、複数の画面空間・鏡像画像を組み合わせた近似処理です。
 
 ## 見た目をソースで調整する場合
 
-通常はPMXモーフだけで使用できます。さらに見た目を変更する場合は、`WorkingFloorAL.fxdayo` の「見た目の調整値」にある `[調整可]` の定数だけを、変更前の値を控えたうえで1項目ずつ調整してください。
+通常はPMXモーフだけで使用できます。さらに見た目を変更する場合は、`MMDayo_SSR.fxdayo` の「見た目の調整値」にある `[調整可]` の定数だけを、変更前の値を控えたうえで1項目ずつ調整してください。
 
 主な調整値は次のとおりです。
 
