@@ -7,7 +7,8 @@
             { "name":"C_SizeX",       "controllerName":"(self)", "item":"FloorSizeX",   "type":"float", "slider":{"min":0.0, "max":10.0, "def":0.0} },
             { "name":"C_SizeZ",       "controllerName":"(self)", "item":"FloorSizeZ",   "type":"float", "slider":{"min":0.0, "max":10.0, "def":0.0} },
             { "name":"C_Reflectivity","controllerName":"(self)", "item":"Reflectivity", "type":"float", "slider":{"min":0.0, "max":1.0, "def":1.0} },
-            { "name":"C_off",         "controllerName":"(self)", "item":"off",          "type":"float" }
+            { "name":"C_off",         "controllerName":"(self)", "item":"off",          "type":"float" },
+            { "name":"C_FloorCenter", "controllerName":"(self)", "item":"センター",      "type":"float3" }
         ],
         "samplers": [
             { "name":"samp", "filter":"LINEAR", "addressU":"CLAMP", "addressV":"CLAMP" }
@@ -55,11 +56,12 @@ using namespace YRZ;
 // → 信頼できる結果を選ぶ → 元の画面へ合成する」という順序で動作します。
 //
 // 【ユーザーが変更してよい箇所】
-// 通常はこのソースを編集せず、WorkingFloorAL.pmx の次のモーフを操作してください。
+// 通常はこのソースを編集せず、WorkingFloorAL.pmx の次のモーフとボーンを操作してください。
 //   FloorSizeX   : 床の横幅。1.0 で 100 MMD 座標単位
 //   FloorSizeZ   : 床の奥行き。1.0 で 100 MMD 座標単位
 //   Reflectivity : 反射率。0.0 で反射なし、0.8 で 80%、1.0 で 100%
 //   off          : エフェクトの無効化。0.0 で有効、1.0 で無効
+//   センター(Y) : 反射面のワールドY座標。X/Zは使用しません。
 //
 // 見た目をさらに調整したい場合は、直後の「見た目の調整値」のうち、
 // [調整可] と書かれた定数だけを少しずつ変更してください。
@@ -86,7 +88,7 @@ using namespace YRZ;
 // MikuMikuDayo から受け取る値
 // ============================================================
 // Time と Resolution は resources_pp.hlsli の ViewCB から提供されます。
-// C_ で始まる値は、先頭の controllers と PMX モーフを経由して届きます。
+// C_ で始まる値は、先頭の controllers と PMX のモーフ／ボーンを経由して届きます。
 // ScreenTexture は現在の画面、NormalDepth は法線・深度情報です。
 // samp は先頭の samplers で宣言された、画像を滑らかに読むための設定です。
 
@@ -140,9 +142,17 @@ static const float SSRStepMMD = 0.36;
 static const float SSRThicknessBaseMMD = 0.85;
 static const float SSRThicknessScale = 0.010;
 static const int SSRSteps = 96;
-// [変更不可] 現在の床面はワールド座標 Y=0。変更すると PMX の床位置、
-// 鏡像化、交差判定、投影の前提が揃わなくなる。
-static const float FloorY = 0.0;
+// [変更不可] 反射面の基準Y座標。実際の反射面はWorkingFloorAL.pmxの
+// 「センター」ボーンのY座標を加えて決める。
+// WHY NOT: 床の高さを各処理へ個別に埋め込むと、交差判定と鏡像化の面がずれる。
+static const float FloorYBase = 0.0;
+
+// HOW: コントローラーPMXのセンターYを、全描画パス共通の反射面高さへ変換する。
+// WHY NOT: センターのX/Zや回転まで反射面へ反映すると、水平床という前提が崩れる。
+float GetReflectionFloorY()
+{
+    return FloorYBase + C_FloorCenter.y;
+}
 
 
 // HOW: 投影行列とビュー行列を逆変換し、画面上の点をワールド座標へ戻せる
@@ -190,7 +200,7 @@ float3 CameraRay(float2 uv)
 
 bool IntersectFloor(float2 uv, out float3 floorPos, out float floorViewZ)
 {
-    // HOW: カメラの視線と Y=FloorY の水平面が交わる位置を計算する。
+    // HOW: カメラの視線と GetReflectionFloorY() の水平面が交わる位置を計算する。
     // 平行、カメラの背後、深度が無効な場合は床なしとして false を返す。
     float3 ray = CameraRay(uv);
     float denom = ray.y;
@@ -200,7 +210,7 @@ bool IntersectFloor(float2 uv, out float3 floorPos, out float floorViewZ)
         return false;
     }
 
-    float t = (FloorY - CameraPosition.y) / denom;
+    float t = (GetReflectionFloorY() - CameraPosition.y) / denom;
     if (t <= 0.0) {
         floorPos = 0;
         floorViewZ = 0;
@@ -439,11 +449,12 @@ MirrorVSO MirrorVS(float4 pos : POSITION, float3 normal : NORMAL, float3 tangent
     // HOW: カメラと同じ床側にある面だけを残すための値を作る。
     // WHY NOT: 全面を反転描画すると、床の裏面や部屋の外殻が特定距離で
     // MirrorScene 全体を覆い、反射対象が見えなくなる。
-    o.mirrorSide = min(pos.y - FloorY, CameraPosition.y - FloorY);
+    float reflectionFloorY = GetReflectionFloorY();
+    o.mirrorSide = min(pos.y - reflectionFloorY, CameraPosition.y - reflectionFloorY);
 
     // HOW: 床面を境に Y 座標と法線を反転して鏡像を作る。
     float4 mirroredPos = pos;
-    mirroredPos.y = 2.0 * FloorY - mirroredPos.y;
+    mirroredPos.y = 2.0 * reflectionFloorY - mirroredPos.y;
     o.position = mul(mirroredPos, ViewProjectionMatrix);
     o.uv = uv;
     o.normal = normalize(float3(normal.x, -normal.y, normal.z));
@@ -528,7 +539,7 @@ float4 PS(VSO input) : SV_TARGET
     float roomMask;
     float4 roomReflected = SampleProjectedRoomReflection(floorPos, cameraRay, texelSize, roomMask);
 
-    float2 originUV = Project(float3(0.0, FloorY, 0.0), ViewProjectionMatrix);
+    float2 originUV = Project(float3(0.0, GetReflectionFloorY(), 0.0), ViewProjectionMatrix);
     float mirrorAxisY = clamp(originUV.y, 0.0, 1.0);
     float foldedMask;
     float4 foldedReflected = SampleFoldedScreenReflection(uv, mirrorAxisY, texelSize, foldedMask);
