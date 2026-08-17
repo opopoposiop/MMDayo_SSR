@@ -1,4 +1,4 @@
-# MMDayo_SSR for MikuMikuDayo
+# MMDayo_SSR / Screen Space Reflection for MikuMikuDayo
 
 [MikuMikuDayo](https://github.com/pennennennennennenem/MikuMikuDayo)用の反射床エフェクトです。  
 `MMDayo_SSR.pmx` のモーフから床の大きさ、反射合成係数、エフェクトの有効・無効を操作できます。さらに「センター」ボーンのX/Y/Z座標から反射面の位置を調整できます。
@@ -29,7 +29,7 @@
 - 「センター」ボーンのX/Y/Z座標を反射面の位置として使用するようにしました。
 - 「センター」ボーンの初期Y座標は `0.05` です。
 - `FloorSizeX` と `FloorSizeZ` の初期値を `0.0`、最大値を `10.0` に変更しました。
-- 床サイズの基準値を100 MMD座標単位へ変更し、モーフ値 `1.0` が100 MMD座標単位に対応するようにしました。
+- 床サイズの基準値を1000 MMD座標単位へ変更し、モーフ値 `1.0` が1000 MMD座標単位に対応するようにしました。
 
 ## 導入方法
 
@@ -43,12 +43,12 @@ PMXには次の4つのモーフがあります。通常はシェーダーのソ�
 
 | PMXモーフ | エフェクト側の値 | 範囲 | 初期値 | 内容 |
 | --- | --- | ---: | ---: | --- |
-| `FloorSizeX` | `C_SizeX` | 0.0～10.0 | 0.0 | 床の横幅。1.0あたり100 MMD座標単位 |
-| `FloorSizeZ` | `C_SizeZ` | 0.0～10.0 | 0.0 | 床の奥行き。1.0あたり100 MMD座標単位 |
+| `FloorSizeX` | `C_SizeX` | 0.0～10.0 | 0.0 | 床の横幅。1.0あたり1000 MMD座標単位 |
+| `FloorSizeZ` | `C_SizeZ` | 0.0～10.0 | 0.0 | 床の奥行き。1.0あたり1000 MMD座標単位 |
 | `Reflectivity` | `C_Reflectivity` | 0.0～1.0 | 1.0 | 反射合成係数。0.0で反射成分を使わず、値が大きいほど強く合成 |
 | `off` | `C_off` | 0.0～1.0 | 0.0 | 0.0で有効、1.0で無効 |
 
-`FloorSizeX` と `FloorSizeZ` の設定可能範囲は、それぞれ0～1000 MMD座標単位です。床は「センター」ボーンのX/Z座標を中心とする水平面に配置され、その高さはY座標で決まります。
+`FloorSizeX` と `FloorSizeZ` の設定可能範囲は、それぞれ0～10000 MMD座標単位です。床は「センター」ボーンのX/Z座標を中心とする水平面に配置され、その高さはY座標で決まります。
 
 PMXコントローラーには「全ての親」と「センター」ボーンがあります。「センター」ボーンの初期位置は `(0, 0.05, 0)` です。
 
@@ -102,7 +102,7 @@ X/Y/Zを同時に変更すると、反射面をXYZ方向へ移動できます。
 
 | 定数 | 初期値 | 内容 |
 | --- | ---: | --- |
-| `BaseFloorUnitMMD` | 100.0 | 床サイズのモーフ値1.0に相当するMMD座標単位 |
+| `BaseFloorUnitMMD` | 1000.0 | 床サイズのモーフ値1.0に相当するMMD座標単位 |
 | `FloorFeatherMMD` | 0.75 | 床端をぼかす幅 |
 | `SourceFloorReflectionScale` | 0.22 | 画面内反射の強さ |
 | `FallbackReflectionScale` | 1.00 | 代替反射の強さ |
@@ -160,7 +160,3 @@ X/Y/Zを同時に変更すると、反射面をXYZ方向へ移動できます。
 
 - [MikuMikuDayo](https://github.com/pennennennennennenem/MikuMikuDayo) — 本エフェクトの実行環境およびYRZFXの仕組みを利用しています。
 - [WorkingFloor](https://seiga.nicovideo.jp/seiga/im1575145)  — 本エフェクトの反射床表現
-
-## 問い合わせ
-
-不具合や互換性に関する報告は、GitHub Issuesでお願いします。報告時はMikuMikuDayoのバージョン、OS、GPU、使用したレンダラー、再現手順を添えてください。
