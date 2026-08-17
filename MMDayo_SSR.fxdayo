@@ -61,7 +61,7 @@ using namespace YRZ;
 //   FloorSizeZ   : 床の奥行き。1.0 で 100 MMD 座標単位
 //   Reflectivity : 反射率。0.0 で反射なし、0.8 で 80%、1.0 で 100%
 //   off          : エフェクトの無効化。0.0 で有効、1.0 で無効
-//   センター(X/Y) : 反射面のワールドX/Y位置。Zは使用しません。
+//   センター(X/Y/Z) : 反射面のワールドX/Y/Z位置。
 //
 // 見た目をさらに調整したい場合は、直後の「見た目の調整値」のうち、
 // [調整可] と書かれた定数だけを少しずつ変更してください。
@@ -143,7 +143,7 @@ static const float SSRThicknessBaseMMD = 0.85;
 static const float SSRThicknessScale = 0.010;
 static const int SSRSteps = 96;
 // [変更不可] 反射面の基準座標。実際の反射面はMMDayo_SSR.pmxの
-// 「センター」ボーンのX/Y座標を加えて決める。
+// 「センター」ボーンのX/Y/Z座標を加えて決める。
 // WHY NOT: 床の高さを各処理へ個別に埋め込むと、交差判定と鏡像化の面がずれる。
 static const float FloorYBase = 0.0;
 
@@ -152,6 +152,13 @@ static const float FloorYBase = 0.0;
 float GetReflectionFloorX()
 {
     return C_FloorCenter.x;
+}
+
+// HOW: コントローラーPMXのセンターZを、床範囲の奥行き方向の中心位置へ変換する。
+// WHY NOT: Zを原点固定にすると、床を奥行き方向へ動かしたとき反射範囲だけが残る。
+float GetReflectionFloorZ()
+{
+    return C_FloorCenter.z;
 }
 
 // HOW: コントローラーPMXのセンターYを、全描画パス共通の反射面高さへ変換する。
@@ -527,7 +534,9 @@ float4 PS(VSO input) : SV_TARGET
     // HOW: ワールド床位置からセンターXを引き、移動後の床ローカル座標で範囲を判定する。
     // WHY NOT: ワールド原点のまま判定すると、センターXを動かしても反射床の端が動かない。
     float localX = floorPos.x - GetReflectionFloorX();
-    float localZ = floorPos.z;
+    // HOW: ワールド床位置からセンターZを引き、移動後の床ローカル座標で範囲を判定する。
+    // WHY NOT: ワールド原点のまま判定すると、センターZを動かしても反射床の端が動かない。
+    float localZ = floorPos.z - GetReflectionFloorZ();
 
     float halfX = sizeX * 0.5;
     float halfZ = sizeZ * 0.5;
@@ -549,8 +558,8 @@ float4 PS(VSO input) : SV_TARGET
     float4 roomReflected = SampleProjectedRoomReflection(floorPos, cameraRay, texelSize, roomMask);
 
     // HOW: 床の移動後中心を投影し、画面折り返し反射の基準線を更新する。
-    // WHY NOT: 原点を固定すると、X移動時だけ補助反射の位置がずれる。
-    float2 originUV = Project(float3(GetReflectionFloorX(), GetReflectionFloorY(), 0.0), ViewProjectionMatrix);
+    // WHY NOT: 原点を固定すると、X/Z移動時だけ補助反射の位置がずれる。
+    float2 originUV = Project(float3(GetReflectionFloorX(), GetReflectionFloorY(), GetReflectionFloorZ()), ViewProjectionMatrix);
     float mirrorAxisY = clamp(originUV.y, 0.0, 1.0);
     float foldedMask;
     float4 foldedReflected = SampleFoldedScreenReflection(uv, mirrorAxisY, texelSize, foldedMask);
