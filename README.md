@@ -153,7 +153,3 @@ PMXコントローラーには「全ての親」と「センター」ボーン�
 
 - [MikuMikuDayo](https://github.com/pennennennennennenem/MikuMikuDayo) — 本エフェクトの実行環境およびYRZFXの仕組みを利用しています。
 - [WorkingFloor](https://seiga.nicovideo.jp/seiga/im1575145)  — 本エフェクトの反射床表現
-
-## 問い合わせ
-
-不具合や互換性に関する報告は、GitHub Issuesでお願いします。報告時はMikuMikuDayoのバージョン、OS、GPU、使用したレンダラー、再現手順を添えてください。
